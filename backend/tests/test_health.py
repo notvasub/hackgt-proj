@@ -1,12 +1,25 @@
+"""Test health check endpoints."""
+
 import pytest
-from httpx import AsyncClient
-from app.main import app
+from fastapi import status
 
 
-@pytest.mark.asyncio
-async def test_health():
-    async with AsyncClient(app=app, base_url="http://test") as ac:
-        r = await ac.get("/v1/health")
-        assert r.status_code == 200
-        assert r.json()["status"] == "ok"
+def test_health_check(client):
+    """Test basic health check."""
+    response = client.get("/api/v1/health/")
+    
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert "environment" in data
+    assert "version" in data
 
+
+def test_database_health_check(client):
+    """Test database health check."""
+    response = client.get("/api/v1/health/db")
+    
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["database"] == "connected"

@@ -1,41 +1,62 @@
-from __future__ import annotations
+"""Main FastAPI application."""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
+from app.config import settings
+from app.database import init_db
+from app.api.v1 import auth, claims, health
 
-from app.api.v1 import routes_claims, routes_files, routes_health, routes_jobs, routes_providers, routes_stream, routes_users, routes_webhooks
-from app.config import get_settings
-from app.middleware.problem_handler import install_problem_handlers
-from app.middleware.request_id import request_id_middleware
+# Create FastAPI app
+app = FastAPI(
+    title="ClaimMax AI Backend",
+    description="AI-powered Insurance Claim Optimizer API",
+    version="0.1.0",
+    docs_url="/docs" if settings.debug else None,
+    redoc_url="/redoc" if settings.debug else None,
+)
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-def create_app() -> FastAPI:
-    settings = get_settings()
-    app = FastAPI(title="Insurance Claim Optimizer API", version="0.1.0")
-
-    # Middleware
-    app.middleware("http")(request_id_middleware)
+# Add trusted host middleware
+if not settings.debug:
     app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"]
+        TrustedHostMiddleware,
+        allowed_hosts=["claimmax-ai.com", "*.claimmax-ai.com"]
     )
-    install_problem_handlers(app)
 
-    # Routers
-    app.include_router(routes_health.router)
-    app.include_router(routes_users.router)
-    app.include_router(routes_files.router)
-    app.include_router(routes_providers.router)
-    app.include_router(routes_claims.router)
-    app.include_router(routes_jobs.router)
-    app.include_router(routes_stream.router)
-    app.include_router(routes_webhooks.router)
+# Include API routers
+app.include_router(auth.router, prefix="/api/v1")
+app.include_router(claims.router, prefix="/api/v1")
+app.include_router(health.router, prefix="/api/v1")
 
-    return app
+# Mount static files for local file serving (development only)
+if settings.environment == "development":
+    uploads_dir = "uploads"
+    if os.path.exists(uploads_dir):
+        app.mount("/files", StaticFiles(directory=uploads_dir), name="files")
 
 
-app = create_app()
+@app.on_event("startup")
+async def startup_event():
+    """Initialize application on startup."""
+    await init_db()
 
+
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {
+        "message": "ClaimMax AI Backend API",
+        "version": "0.1.0",
+        "docs": "/docs" if settings.debug else "Documentation not available in production"
+    }

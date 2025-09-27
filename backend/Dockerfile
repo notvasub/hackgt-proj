@@ -1,17 +1,35 @@
 FROM python:3.11-slim
 
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+# Set work directory
 WORKDIR /app
 
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir -U pip && \
-    pip install --no-cache-dir fastapi uvicorn[standard] pydantic pydantic-settings orjson httpx python-jose[cryptography] sse-starlette
+# Install system dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        postgresql-client \
+        build-essential \
+        libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY app ./app
-COPY Makefile ./
+# Install Python dependencies
+COPY pyproject.toml .
+RUN pip install --no-cache-dir -e .
 
-ENV APP_PORT=8080 APP_HOST=0.0.0.0
+# Copy project
+COPY . .
 
-EXPOSE 8080
+# Create non-root user
+RUN adduser --disabled-password --gecos '' appuser \
+    && chown -R appuser:appuser /app
+USER appuser
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Expose port
+EXPOSE 8000
 
+# Run the application
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
